@@ -1,6 +1,8 @@
 
 
 import express from "express";
+import { isAuthenticated } from "../middlewares/authMiddleware.js";
+import activityMiddleware from "../middlewares/activityMiddleware.js";
 
 import {
   sendMessage,
@@ -11,14 +13,11 @@ import {
    markAsDelivered,
 } from "../controllers/messageController.js";
 
-import authMiddleware from "../middlewares/authMiddleware.js";
-import activityMiddleware from "../middlewares/activityMiddleware.js";
-
 const router = express.Router();
 
 
 // ----------------- ALL ROUTES PROTECTED -----------------
-router.use(authMiddleware);
+router.use(isAuthenticated);
 router.use(activityMiddleware);
 
 

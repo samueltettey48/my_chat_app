@@ -8,7 +8,7 @@ import {
   googleAuth,
 } from "../controllers/authController.js";
 
-import authMiddleware from "../middlewares/authMiddleware.js";
+import {isAuthenticated} from "../middlewares/authMiddleware.js";
 import activityMiddleware from "../middlewares/activityMiddleware.js";
 import transporter from "../utils/mailer.js"; // ✅ ADD THIS
 
@@ -53,7 +53,7 @@ authRouter.get("/test-email", async (req, res) => {
 // Logout (requires valid JWT user)
 authRouter.post(
   "/logout",
-  authMiddleware,
+  isAuthenticated,
   activityMiddleware,
   logout
 );

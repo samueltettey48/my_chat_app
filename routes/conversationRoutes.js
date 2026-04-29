@@ -1,47 +1,67 @@
 
-import { Router } from "express";
 
-import authMiddleware from "../middlewares/authMiddleware.js";
-import activityMiddleware from "../middlewares/activityMiddleware.js";
+import { Router } from "express";
+import { isAuthenticated } from "../middlewares/authMiddleware.js";
 
 import {
   createConversation,
   getUserConversations,
+  createGroupConversation,
   getConversation,
+  addMember,
   removeMember,
+  makeAdmin,
+  updateUserRole,
   markAsRead,
-  createGroupConversation
 } from "../controllers/conversationController.js";
 
 const router = Router();
 
+// ======================================================
+// 🔥 1-TO-1 CONVERSATIONS
+// ======================================================
 
-// ----------------- ALL ROUTES PROTECTED -----------------
-router.use(authMiddleware);
-router.use(activityMiddleware);
+// Create or get private chat
+router.post("/private", isAuthenticated, createConversation);
 
+// Get all conversations for logged-in user
+router.get("/", isAuthenticated, getUserConversations);
 
-// ----------------- 1-TO-1 CONVERSATION -----------------
-router.post("/", createConversation);
-
-// // ----------------- GROUP CHAT -----------------
- router.post("/group", createGroupConversation);
-
-
-// ----------------- GET CONVERSATIONS -----------------
-router.get("/", getUserConversations);
+// Get single conversation with messages
+router.get("/:id", isAuthenticated, getConversation);
 
 
-// // ----------------- GET SINGLE CONVERSATION -----------------
- router.get("/:id", getConversation);
+// ======================================================
+// 🔥 GROUP CONVERSATIONS
+// ======================================================
+
+// Create group
+router.post("/group", isAuthenticated, createGroupConversation);
 
 
-// // ----------------- READ RECEIPTS -----------------
-router.patch("/read", markAsRead);
+// ======================================================
+// 🔥 GROUP MANAGEMENT (ADMIN)
+// ======================================================
+
+// Add member
+router.post("/group/add-member", isAuthenticated, addMember);
+
+// Remove member
+router.post("/group/remove-member", isAuthenticated, removeMember);
+
+// Promote user to admin
+router.post("/group/make-admin", isAuthenticated, makeAdmin);
+
+// Update role (admin/member)
+router.put("/group/update-role", isAuthenticated, updateUserRole);
 
 
-// // ----------------- GROUP MANAGEMENT -----------------
+// ======================================================
+// 🔥 MESSAGE FEATURES
+// ======================================================
 
-router.post("/remove-member", removeMember);
+// Mark messages as read
+router.post("/read", isAuthenticated, markAsRead);
+
 
 export default router;

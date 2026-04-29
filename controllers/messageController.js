@@ -1,20 +1,17 @@
-
-
 import prisma from "../config/db.js";
 
 // ----------------- SEND MESSAGE -----------------
 export const sendMessage = async (req, res) => {
-  const { conversationId, content } = req.body;
+  const { conversationId, content, mediaUrl, type } = req.body;
   const senderId = req.user.id;
 
   try {
-    if (!conversationId || !content) {
+    if (!conversationId || (!content && !mediaUrl)) {
       return res.status(400).json({
-        message: "conversationId and content are required",
+        message: "conversationId and content/media are required",
       });
     }
 
-    // 🔍 check conversation exists
     const conversation = await prisma.conversation.findUnique({
       where: { id: Number(conversationId) },
     });
@@ -23,7 +20,6 @@ export const sendMessage = async (req, res) => {
       return res.status(404).json({ message: "Conversation not found" });
     }
 
-    // 🔐 check user is participant (IMPORTANT SECURITY FIX)
     const isParticipant = await prisma.conversationParticipant.findFirst({
       where: {
         conversationId: Number(conversationId),
@@ -37,19 +33,25 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // 📨 create message
     const message = await prisma.message.create({
       data: {
-        content,
+        content: content || "",
+        mediaUrl,
+        type: type || "TEXT",
         conversationId: Number(conversationId),
         senderId,
       },
       include: {
-        sender: true,
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
       },
     });
 
-    // 📊 create message status for ALL participants
     const participants = await prisma.conversationParticipant.findMany({
       where: { conversationId: Number(conversationId) },
     });
@@ -62,7 +64,6 @@ export const sendMessage = async (req, res) => {
       })),
     });
 
-    // 🔥 SOCKET.IO (ROOM BASED — IMPORTANT FIX)
     if (req.io) {
       req.io.to(`conversation_${conversationId}`).emit("receiveMessage", message);
     }
@@ -77,10 +78,10 @@ export const sendMessage = async (req, res) => {
 // ----------------- GET MESSAGES -----------------
 export const getMessages = async (req, res) => {
   const { conversationId } = req.params;
+  const { page = 1, limit = 50 } = req.query;
   const userId = req.user.id;
 
   try {
-    // 🔐 verify access
     const isParticipant = await prisma.conversationParticipant.findFirst({
       where: {
         conversationId: Number(conversationId),
@@ -89,35 +90,45 @@ export const getMessages = async (req, res) => {
     });
 
     if (!isParticipant) {
-      return res.status(403).json({
-        message: "Access denied",
-      });
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const messages = await prisma.message.findMany({
       where: {
         conversationId: Number(conversationId),
-        isDeleted: false,
       },
       include: {
-        sender: true,
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+          },
+        },
         status: true,
       },
       orderBy: {
         createdAt: "asc",
       },
+      skip: (page - 1) * limit,
+      take: Number(limit),
     });
 
-    res.json(messages);
+    // ✅ Handle deleted + media formatting
+    const formattedMessages = messages.map((msg) => ({
+      ...msg,
+      content: msg.isDeleted ? "This message was deleted" : msg.content,
+      mediaUrl: msg.isDeleted ? null : msg.mediaUrl,
+    }));
+
+    res.json(formattedMessages);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// ======================================================
-// 🔥 DELETE MESSAGE (SOFT DELETE)
-// ======================================================
+// ----------------- DELETE MESSAGE -----------------
 export const deleteMessage = async (req, res) => {
   const { messageId } = req.params;
   const userId = req.user.id;
@@ -125,39 +136,38 @@ export const deleteMessage = async (req, res) => {
   try {
     const id = Number(messageId);
 
-    // 🔍 find message
     const message = await prisma.message.findUnique({
       where: { id },
     });
 
     if (!message) {
-      return res.status(404).json({
-        message: "Message not found",
-      });
+      return res.status(404).json({ message: "Message not found" });
     }
 
-    // 🔐 only sender can delete
     if (message.senderId !== userId) {
       return res.status(403).json({
         message: "Not authorized to delete this message",
       });
     }
 
-    // ❗ already deleted
     if (message.isDeleted) {
       return res.status(400).json({
         message: "Message already deleted",
       });
     }
 
-    // 🗑 soft delete
     const updatedMessage = await prisma.message.update({
       where: { id },
       data: {
         isDeleted: true,
-        content: "This message was deleted", // optional UX improvement
+        content: "This message was deleted",
       },
     });
+
+    // 🔥 emit delete event
+    if (req.io) {
+      req.io.to(`conversation_${message.conversationId}`).emit("messageDeleted", updatedMessage);
+    }
 
     res.json({
       message: "Message deleted successfully",
@@ -169,10 +179,7 @@ export const deleteMessage = async (req, res) => {
   }
 };
 
-
-// ======================================================
-// 🔥 EDIT MESSAGE
-// ======================================================
+// ----------------- EDIT MESSAGE -----------------
 export const editMessage = async (req, res) => {
   const { messageId } = req.params;
   const { content } = req.body;
@@ -187,7 +194,6 @@ export const editMessage = async (req, res) => {
 
     const id = Number(messageId);
 
-    // 🔍 find message
     const message = await prisma.message.findUnique({
       where: { id },
     });
@@ -198,28 +204,29 @@ export const editMessage = async (req, res) => {
       });
     }
 
-    // 🔐 only sender can edit
     if (message.senderId !== userId) {
       return res.status(403).json({
         message: "Not authorized to edit this message",
       });
     }
 
-    // ❌ cannot edit deleted message
     if (message.isDeleted) {
       return res.status(400).json({
         message: "Cannot edit a deleted message",
       });
     }
 
-    // ✏️ update message
     const updatedMessage = await prisma.message.update({
       where: { id },
       data: {
         content,
-        updatedAt: new Date(),
       },
     });
+
+    // 🔥 emit edit event
+    if (req.io) {
+      req.io.to(`conversation_${message.conversationId}`).emit("messageEdited", updatedMessage);
+    }
 
     res.json({
       message: "Message edited successfully",
@@ -231,10 +238,7 @@ export const editMessage = async (req, res) => {
   }
 };
 
-
-// ======================================================
-// 🔥 MARK MESSAGES AS DELIVERED
-// ======================================================
+// ----------------- MARK AS DELIVERED -----------------
 export const markAsDelivered = async (req, res) => {
   const { conversationId } = req.body;
   const userId = req.user.id;
@@ -246,7 +250,6 @@ export const markAsDelivered = async (req, res) => {
       });
     }
 
-    // 🔐 ensure user is part of conversation
     const participant = await prisma.conversationParticipant.findFirst({
       where: {
         conversationId: Number(conversationId),
@@ -260,7 +263,6 @@ export const markAsDelivered = async (req, res) => {
       });
     }
 
-    // 📩 get messages not sent by this user
     const messages = await prisma.message.findMany({
       where: {
         conversationId: Number(conversationId),
@@ -269,7 +271,6 @@ export const markAsDelivered = async (req, res) => {
       select: { id: true },
     });
 
-    // 🔥 update status to delivered
     const updates = messages.map((msg) =>
       prisma.messageStatus.upsert({
         where: {
@@ -290,6 +291,13 @@ export const markAsDelivered = async (req, res) => {
     );
 
     await Promise.all(updates);
+
+    // 🔥 emit delivered event
+    if (req.io) {
+      req.io.to(`conversation_${conversationId}`).emit("messagesDelivered", {
+        userId,
+      });
+    }
 
     res.json({ message: "Messages marked as delivered" });
   } catch (error) {

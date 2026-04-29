@@ -8,13 +8,13 @@ import {
   getCurrentUser,
 } from "../controllers/userController.js";
 
-import authMiddleware from "../middlewares/authMiddleware.js";
+import { isAuthenticated }  from "../middlewares/authMiddleware.js";
 import activityMiddleware from "../middlewares/activityMiddleware.js";
 
 const userRouter = Router();
 
 // 🔐 Apply middlewares globally (cleaner)
-userRouter.use(authMiddleware);
+userRouter.use(isAuthenticated);
 userRouter.use(activityMiddleware);
 
 
