@@ -4,7 +4,8 @@ import { Router } from "express";
 import {
   searchUsers,
   getUserById,
-  updateStatus
+  updateStatus,
+  getCurrentUser,
 } from "../controllers/userController.js";
 
 import authMiddleware from "../middlewares/authMiddleware.js";
@@ -12,28 +13,37 @@ import activityMiddleware from "../middlewares/activityMiddleware.js";
 
 const userRouter = Router();
 
-// Search users
-userRouter.get(
-  "/search",
-  authMiddleware,
-  activityMiddleware,
-  searchUsers
-);
+// 🔐 Apply middlewares globally (cleaner)
+userRouter.use(authMiddleware);
+userRouter.use(activityMiddleware);
 
-// Get single user
-userRouter.get(
-  "/:id",
-  authMiddleware,
-  activityMiddleware,
-  getUserById
-);
 
-// Update online status
-userRouter.patch(
-  "/status",
-  authMiddleware,
-  activityMiddleware,
-  updateStatus
-);
+// ======================================================
+// 🔍 SEARCH USERS (with pagination)
+// GET /api/users/search?query=...&page=1&limit=10
+// ======================================================
+userRouter.get("/search", searchUsers);
+
+
+// ======================================================
+// 👤 GET CURRENT USER (VERY IMPORTANT)
+// GET /api/users/me
+// ======================================================
+userRouter.get("/me", getCurrentUser);
+
+
+// ======================================================
+// 🟢 UPDATE ONLINE STATUS
+// PATCH /api/users/status
+// ======================================================
+userRouter.patch("/status", updateStatus);
+
+
+// ======================================================
+// 👤 GET USER BY ID
+// GET /api/users/:id
+// ======================================================
+userRouter.get("/:id", getUserById);
+
 
 export default userRouter;

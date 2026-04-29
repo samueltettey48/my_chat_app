@@ -1,5 +1,3 @@
-
-
 import { Router } from "express";
 import {
   signup,
@@ -7,29 +5,57 @@ import {
   logout,
   forgotPassword,
   resetPassword,
-  googleAuth
+  googleAuth,
 } from "../controllers/authController.js";
 
 import authMiddleware from "../middlewares/authMiddleware.js";
+import activityMiddleware from "../middlewares/activityMiddleware.js";
+import transporter from "../utils/mailer.js"; // ✅ ADD THIS
 
 const authRouter = Router();
 
-// Signup
+// ----------------- PUBLIC ROUTES -----------------
+
+// Signup (create user in Prisma User table)
 authRouter.post("/signup", signup);
 
-// Login
+// Login (returns JWT for Prisma User)
 authRouter.post("/login", login);
 
-// Logout (protected)
-authRouter.post("/logout", authMiddleware, logout);
+// Google OAuth login
+authRouter.post("/google", googleAuth);
 
-// Forgot password
+// Forgot password (Prisma resetToken flow)
 authRouter.post("/forgot-password", forgotPassword);
 
-// Reset password
-authRouter.post("/reset-password/:token", resetPassword);
+// Reset password (Prisma resetToken validation)
+authRouter.post("/reset-password", resetPassword);
 
-// Google login
-authRouter.post("/google", googleAuth);
+// ✅ TEST EMAIL ROUTE (ADD HERE)
+authRouter.get("/test-email", async (req, res) => {
+  try {
+    await transporter.sendMail({
+      from: `"Test" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER,
+      subject: "Test Email",
+      html: "<h2>Email is working ✅</h2>",
+    });
+
+    res.send("Email sent successfully");
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Email failed");
+  }
+});
+
+// ----------------- PROTECTED ROUTES -----------------
+
+// Logout (requires valid JWT user)
+authRouter.post(
+  "/logout",
+  authMiddleware,
+  activityMiddleware,
+  logout
+);
 
 export default authRouter;

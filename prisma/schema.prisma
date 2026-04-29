@@ -4,21 +4,159 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  
 }
 
+//////////////////////
+// ENUMS
+//////////////////////
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+//////////////////////
+// MODELS
+//////////////////////
+
 model User {
-  id            Int      @id @default(autoincrement())
-  name          String
-  email         String   @unique
-  password      String?
-  googleId      String?  @unique
-  resetToken    String?
-  resetTokenExp DateTime?
+  id              Int      @id @default(autoincrement())
+  name            String
+  email           String   @unique
+  password        String?
 
-  isOnline      Boolean  @default(false)
-  lastSeen      DateTime?
+  googleId        String?  @unique
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  resetToken      String?
+  resetTokenExp   DateTime?
+
+  otp             String?
+  otpExp          DateTime?
+
+  // ✅ PROFILE FEATURES
+  bio             String?
+  avatar          String?
+  status          String?
+  username        String?   @unique
+  phoneNumber     String?   @unique
+
+  // ✅ PRESENCE
+  isOnline        Boolean   @default(false)
+  lastSeen        DateTime?
+
+  // ✅ PRIVACY SETTINGS
+  lastSeenPrivacy     String @default("everyone")
+  profilePhotoPrivacy String @default("everyone")
+  statusPrivacy       String @default("everyone")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 🔗 Relations
+  messages        Message[]
+  participants    ConversationParticipant[]
+  messageStatus   MessageStatus[]
+
+  stories         Story[]
+}
+
+model Conversation {
+  id              Int      @id @default(autoincrement())
+
+  uniqueKey       String?  @unique
+
+  isGroup         Boolean  @default(false)
+  name            String?
+
+  // ✅ PERFORMANCE OPTIMIZATION
+  lastMessage     String?
+  lastMessageAt   DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  participants    ConversationParticipant[]
+  messages        Message[]
+}
+
+model ConversationParticipant {
+  id             Int      @id @default(autoincrement())
+
+  userId         Int
+  conversationId Int
+
+  user           User         @relation(fields: [userId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role           String   @default("member")
+  joinedAt       DateTime @default(now())
+  isMuted        Boolean  @default(false)
+  lastReadAt     DateTime?
+
+  @@unique([userId, conversationId])
+}
+
+model Message {
+  id             Int      @id @default(autoincrement())
+
+  // ✅ TEXT OR MEDIA
+  content        String?
+  mediaUrl       String?
+
+  // ✅ TYPE (ENUM)
+  type           MessageType @default(TEXT)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  isDeleted      Boolean  @default(false)
+
+  senderId       Int
+  conversationId Int
+
+  sender         User         @relation(fields: [senderId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  status         MessageStatus[]
+}
+
+model MessageStatus {
+  id        Int      @id @default(autoincrement())
+
+  status    String   @default("sent")
+  updatedAt DateTime @default(now())
+
+  messageId Int
+  userId    Int
+
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@unique([messageId, userId])
+}
+
+//////////////////////
+// NEW MODELS
+//////////////////////
+
+model BlockedUser {
+  id        Int @id @default(autoincrement())
+  blockerId Int
+  blockedId Int
+
+  @@unique([blockerId, blockedId])
+}
+
+model Story {
+  id        Int      @id @default(autoincrement())
+  mediaUrl  String
+  caption   String?
+
+  userId    Int
+  user      User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 }
